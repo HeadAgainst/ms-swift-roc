@@ -558,6 +558,58 @@ register_template(
         MLLMTemplateType.qwen3_vl, template_cls=Qwen3VLTemplate, default_system=None, thinking_prefix='<think>\n'))
 
 
+class Qwen3VLRocTemplate(Qwen3VLTemplate):
+
+    def init_processor(self, processor):
+        super().init_processor(processor)
+        tokenizer = self.tokenizer
+        config = self.config
+        self.roc_enabled = bool(getattr(config, 'roc_enabled', False))
+        self.roc_score_token = getattr(config, 'roc_score_token', '[SCORE]')
+        self.roc_score_token_id = getattr(config, 'roc_score_token_id', tokenizer.convert_tokens_to_ids(self.roc_score_token))
+        self.roc_num_tokens = int(getattr(config, 'roc_num_tokens', 10))
+        self.roc_min_score = float(getattr(config, 'roc_min_score', 1.0))
+        self.roc_max_score = float(getattr(config, 'roc_max_score', 5.0))
+        bucket_template = getattr(config, 'roc_bucket_token_template', '[IMG{}]')
+        default_bucket_ids = tokenizer.convert_tokens_to_ids([bucket_template.format(i) for i in range(self.roc_num_tokens)])
+        self.roc_bucket_token_ids = list(getattr(config, 'roc_bucket_token_ids', default_bucket_ids))
+
+    def prepare_generate_kwargs(self, generate_kwargs: Dict[str, Any], *, model=None) -> Dict[str, Any]:
+        res = super().prepare_generate_kwargs(generate_kwargs, model=model)
+        if self.roc_enabled:
+            res['output_scores'] = True
+        return res
+
+    def post_process_generate_response(self, response: str, inputs: StdTemplateInputs, **kwargs) -> str:
+        if not self.roc_enabled or self.roc_score_token not in response:
+            return response
+        generate_ids = kwargs.get('generate_ids')
+        generation_scores = kwargs.get('generation_scores')
+        batched_index = kwargs.get('batched_index')
+        if generate_ids is None or generation_scores is None or batched_index is None:
+            return response
+        try:
+            score_index = generate_ids.index(self.roc_score_token_id)
+        except ValueError:
+            return response
+        if score_index >= len(generation_scores):
+            return response
+        score_logits = generation_scores[score_index][batched_index, self.roc_bucket_token_ids].float()
+        score_probs = torch.softmax(score_logits, dim=-1)
+        weights = torch.linspace(
+            self.roc_min_score, self.roc_max_score, steps=self.roc_num_tokens, device=score_probs.device)
+        pred_score = (score_probs * weights).sum().item()
+        return response.replace(self.roc_score_token, f'{pred_score:.4f}', 1)
+
+
+register_template(
+    QwenTemplateMeta(
+        MLLMTemplateType.qwen3_vl_roc,
+        template_cls=Qwen3VLRocTemplate,
+        default_system=None,
+        thinking_prefix='<think>\n'))
+
+
 class Qwen3_5Template(Qwen3VLTemplate):
     image_token_id = 248056
     video_token_id = 248057

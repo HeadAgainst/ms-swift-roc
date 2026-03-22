@@ -54,6 +54,18 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                 args.sequence_parallel_size, model=self.model, tokenizer=self.processor, padding_free=args.padding_free)
         if self.model is None:
             return
+        if getattr(args, 'roc_enable', False):
+            tokenizer = self.processor.tokenizer
+            bucket_tokens = [args.roc_bucket_token_template.format(i) for i in range(args.roc_num_tokens)]
+            self.model.config.roc_enabled = True
+            self.model.config.roc_score_token = args.roc_score_token
+            self.model.config.roc_score_token_id = tokenizer.convert_tokens_to_ids(args.roc_score_token)
+            self.model.config.roc_num_tokens = args.roc_num_tokens
+            self.model.config.roc_min_score = args.roc_min_score
+            self.model.config.roc_max_score = args.roc_max_score
+            self.model.config.roc_l1_weight = args.roc_l1_weight
+            self.model.config.roc_bucket_token_template = args.roc_bucket_token_template
+            self.model.config.roc_bucket_token_ids = tokenizer.convert_tokens_to_ids(bucket_tokens)
         if hasattr(self.model, 'hf_device_map'):
             logger.info(f'model.hf_device_map: {self.model.hf_device_map}')
 

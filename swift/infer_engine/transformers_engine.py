@@ -423,6 +423,12 @@ class TransformersEngine(InferEngine):
                 logprobs = self._get_logprobs(logprobs_list, generate_ids, request_config.top_logprobs)
                 usage_info = self._update_usage_info(usage_info, len(generate_ids))
                 response = self.template.decode(generate_ids, template_inputs=template_inputs[i])
+                response = self.template.post_process_generate_response(
+                    response,
+                    template_inputs[i],
+                    generate_ids=generate_ids,
+                    generation_scores=output.get('scores'),
+                    batched_index=batched_index)
                 finish_reason = self._get_finish_reason(generation_config.max_new_tokens, len(generate_ids), True)
                 toolcall = self._get_toolcall(response)
                 token_ids = generate_ids if request_config.return_details else None

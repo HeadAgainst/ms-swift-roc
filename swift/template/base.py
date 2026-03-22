@@ -1437,7 +1437,7 @@ class Template(ProcessorMixin):
             generate_ids = generate_ids[..., num_prompt_tokens:]
         return generate_ids
 
-    def post_process_generate_response(self, response: str, inputs: StdTemplateInputs) -> str:
+    def post_process_generate_response(self, response: str, inputs: StdTemplateInputs, **kwargs) -> str:
         return response
 
     def pre_forward_hook(self, model: nn.Module, args, kwargs):

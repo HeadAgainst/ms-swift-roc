@@ -181,6 +181,25 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
     # fsdp
     fsdp: Optional[str] = None
 
+    # roc score
+    roc_enable: bool = False
+    roc_num_tokens: int = 10
+    roc_min_score: float = 1.0
+    roc_max_score: float = 5.0
+    roc_l1_weight: float = 1.0
+    roc_score_token: str = '[SCORE]'
+    roc_bucket_token_template: str = '[IMG{}]'
+
+    def _init_roc(self):
+        if not self.roc_enable:
+            return
+        roc_tokens = [self.roc_score_token]
+        roc_tokens += [self.roc_bucket_token_template.format(i) for i in range(self.roc_num_tokens)]
+        existed = set(self.new_special_tokens)
+        self.new_special_tokens += [token for token in roc_tokens if token not in existed]
+        if self.loss_type is None:
+            self.loss_type = 'roc_score_l1'
+
     def _check_padding_free(self):
         if self.padding_free or self.packing:
             if self.packing:
@@ -202,6 +221,7 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
                 else:
                     self.adapters = [self.resume_from_checkpoint]
         BaseArguments.__post_init__(self)
+        self._init_roc()
         self._init_override()
         TunerArguments.__post_init__(self)
         self._check_padding_free()
