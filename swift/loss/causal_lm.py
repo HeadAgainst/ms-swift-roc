@@ -20,10 +20,12 @@ class RocScoreL1Loss(BaseLoss):
     def __call__(self, outputs, labels, *, num_items_in_batch=None, gt_score=None, **kwargs):
         from swift.trainers import per_token_loss_func
 
+        mode = 'train' if self.trainer.model.training else 'eval'
         token_loss = per_token_loss_func(outputs, labels)
         if num_items_in_batch is None:
             num_items_in_batch = (labels[:, 1:] != -100).sum()
         lm_ce_loss = token_loss.sum() / num_items_in_batch
+        self.trainer.custom_metrics[mode]['lm_ce_loss'].update(lm_ce_loss.detach())
         if gt_score is None:
             return lm_ce_loss
 
@@ -61,4 +63,5 @@ class RocScoreL1Loss(BaseLoss):
         gt_score = gt_score[batch_indices]
 
         l1_loss = F.smooth_l1_loss(pred_score, gt_score)
+        self.trainer.custom_metrics[mode]['pred_score_l1'].update(l1_loss.detach())
         return lm_ce_loss + self.args.roc_l1_weight * l1_loss

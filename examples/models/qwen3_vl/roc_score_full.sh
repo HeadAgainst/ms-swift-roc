@@ -38,4 +38,5 @@ swift sft \
     --deepspeed zero3 \
     --use_liger_kernel true \
     --dataset_num_proc 4 \
-    --dataloader_num_workers 4
+    --dataloader_num_workers 4 \
+    --report_to swanlab
