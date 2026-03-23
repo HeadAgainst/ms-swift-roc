@@ -6,8 +6,8 @@ IMAGE_MAX_TOKEN_NUM=1024 \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 swift sft \
-    --model Qwen/Qwen3-VL-30B-A3B-Instruct \
-    --dataset /path/to/rater_train.jsonl \
+    --model /mnt/hdfs/lyl1015/checkpoint/Qwen/Qwen3-VL-8B-Instruct \
+    --dataset /mnt/hdfs/lyl1015/data/piaa/new/sft_rater_data_processed.jsonl \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
     --template qwen3_vl_roc \
