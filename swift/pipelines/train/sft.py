@@ -64,6 +64,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             self.model.config.roc_min_score = args.roc_min_score
             self.model.config.roc_max_score = args.roc_max_score
             self.model.config.roc_l1_weight = args.roc_l1_weight
+            self.model.config.roc_bucket_ce_weight = args.roc_bucket_ce_weight
             self.model.config.roc_bucket_token_template = args.roc_bucket_token_template
             self.model.config.roc_bucket_token_ids = tokenizer.convert_tokens_to_ids(bucket_tokens)
         if hasattr(self.model, 'hf_device_map'):

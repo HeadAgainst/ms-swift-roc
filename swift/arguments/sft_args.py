@@ -187,6 +187,7 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
     roc_min_score: float = 1.0
     roc_max_score: float = 5.0
     roc_l1_weight: float = 1.0
+    roc_bucket_ce_weight: float = 1.0
     roc_score_token: str = '[SCORE]'
     roc_bucket_token_template: str = '[IMG{}]'
 

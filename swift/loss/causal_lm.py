@@ -63,7 +63,22 @@ class RocScoreL1Loss(BaseLoss):
         gt_score = gt_score.to(device=pred_score.device, dtype=pred_score.dtype).view(-1)
         gt_score = gt_score[batch_indices]
 
+        score_span = self.args.roc_max_score - self.args.roc_min_score
+        if score_span <= 0:
+            raise ValueError('`roc_max_score` must be greater than `roc_min_score`.')
+        target_bucket = torch.round(
+            (gt_score - self.args.roc_min_score) / score_span * (self.args.roc_num_tokens - 1)).long()
+        target_bucket = target_bucket.clamp_(0, self.args.roc_num_tokens - 1)
+        bucket_ce_loss = F.cross_entropy(score_logits, target_bucket)
+
         l1_loss = F.smooth_l1_loss(pred_score, gt_score)
+        self.trainer.custom_metrics[mode]['bucket_ce_loss'].update(bucket_ce_loss.detach())
         self.trainer.custom_metrics[mode]['pred_score_l1'].update(l1_loss.detach())
+        self.trainer.custom_metrics[mode]['pred_score_mean'].update(pred_score.detach())
+        self.trainer.custom_metrics[mode]['target_bucket_mean'].update(target_bucket.detach().float())
+        self.trainer.forced_log_scalars[mode]['bucket_ce_loss'] = float(bucket_ce_loss.detach().float().item())
         self.trainer.forced_log_scalars[mode]['pred_score_l1'] = float(l1_loss.detach().float().item())
-        return lm_ce_loss + self.args.roc_l1_weight * l1_loss
+        self.trainer.forced_log_scalars[mode]['pred_score_mean'] = float(pred_score.detach().float().mean().item())
+        self.trainer.forced_log_scalars[mode]['target_bucket_mean'] = float(
+            target_bucket.detach().float().mean().item())
+        return lm_ce_loss + self.args.roc_bucket_ce_weight * bucket_ce_loss + self.args.roc_l1_weight * l1_loss
