@@ -245,6 +245,8 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
             self.accelerator_config = {'dispatch_batches': False}
         if not (self.eval_dataset or self._val_dataset_exists):
             self.eval_strategy = 'no'
+        # Keep extra dataset fields like `gt_score` so custom ROC loss can receive them through the template batch.
+        self.remove_unused_columns = False
         self.training_args = TrainerFactory.get_training_args(self)
         self.training_args.remove_unused_columns = False
         self._add_version()

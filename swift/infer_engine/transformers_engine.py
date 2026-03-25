@@ -427,6 +427,7 @@ class TransformersEngine(InferEngine):
                     response,
                     template_inputs[i],
                     generate_ids=generate_ids,
+                    generation_logits=output.get('logits'),
                     generation_scores=output.get('scores'),
                     batched_index=batched_index)
                 finish_reason = self._get_finish_reason(generation_config.max_new_tokens, len(generate_ids), True)
