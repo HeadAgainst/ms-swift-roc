@@ -944,6 +944,8 @@ class SwiftMixin:
         if forced_scalars:
             logs.update({f'{prefix}{k}': v for k, v in forced_scalars.items()})
             forced_scalars.clear()
+        if os.environ.get('SWIFT_DEBUG_FULL_LOGS', '0') == '1':
+            logger.info(f'full_logs[{mode}]: {logs}')
         return super().log(logs, *args, **kwargs)
 
     def _maybe_log_save_evaluate(self, tr_loss, *args, **kwargs):
