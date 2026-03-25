@@ -101,6 +101,10 @@ class SwiftMixin:
             'train': collections.defaultdict(_get_mean_metric),
             'eval': collections.defaultdict(_get_mean_metric)
         }
+        self.forced_log_scalars = {
+            'train': {},
+            'eval': {},
+        }
         self.hub = get_hub()
 
         self.model_meta = model.model_meta
@@ -936,6 +940,10 @@ class SwiftMixin:
         metrics = self.custom_metrics[mode]
         prefix = 'eval_' if mode == 'eval' else ''
         logs.update(self.compute_custom_metrics(metrics, prefix))
+        forced_scalars = self.forced_log_scalars[mode]
+        if forced_scalars:
+            logs.update({f'{prefix}{k}': v for k, v in forced_scalars.items()})
+            forced_scalars.clear()
         return super().log(logs, *args, **kwargs)
 
     def _maybe_log_save_evaluate(self, tr_loss, *args, **kwargs):

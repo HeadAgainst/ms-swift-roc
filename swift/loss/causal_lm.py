@@ -26,6 +26,7 @@ class RocScoreL1Loss(BaseLoss):
             num_items_in_batch = (labels[:, 1:] != -100).sum()
         lm_ce_loss = token_loss.sum() / num_items_in_batch
         self.trainer.custom_metrics[mode]['lm_ce_loss'].update(lm_ce_loss.detach())
+        self.trainer.forced_log_scalars[mode]['lm_ce_loss'] = float(lm_ce_loss.detach().float().item())
         if gt_score is None:
             return lm_ce_loss
 
@@ -64,4 +65,5 @@ class RocScoreL1Loss(BaseLoss):
 
         l1_loss = F.smooth_l1_loss(pred_score, gt_score)
         self.trainer.custom_metrics[mode]['pred_score_l1'].update(l1_loss.detach())
+        self.trainer.forced_log_scalars[mode]['pred_score_l1'] = float(l1_loss.detach().float().item())
         return lm_ce_loss + self.args.roc_l1_weight * l1_loss
