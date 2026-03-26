@@ -17,7 +17,7 @@ class CustomCrossEntropyLoss(BaseLoss):
 
 class RocScoreL1Loss(BaseLoss):
 
-    def __call__(self, outputs, labels, *, num_items_in_batch=None, gt_score=None, **kwargs):
+    def __call__(self, outputs, labels, *, num_items_in_batch=None, gt_score=None, lengths=None, **kwargs):
         from swift.trainers import per_token_loss_func
 
         mode = 'train' if self.trainer.model.training else 'eval'
@@ -61,7 +61,24 @@ class RocScoreL1Loss(BaseLoss):
         if not isinstance(gt_score, torch.Tensor):
             gt_score = torch.tensor(gt_score, device=pred_score.device, dtype=pred_score.dtype)
         gt_score = gt_score.to(device=pred_score.device, dtype=pred_score.dtype).view(-1)
-        gt_score = gt_score[batch_indices]
+        if lengths is not None:
+            if isinstance(lengths, torch.Tensor):
+                lengths = lengths.detach().cpu().tolist()
+            flat_lengths = []
+            for value in lengths:
+                if isinstance(value, (list, tuple)):
+                    if len(value) != 1:
+                        raise ValueError(f'Unexpected packed lengths item: {value}')
+                    value = value[0]
+                flat_lengths.append(int(value))
+            if len(flat_lengths) == gt_score.shape[0] and gt_score.shape[0] > 1:
+                cum_lengths = torch.tensor(flat_lengths, device=labels.device).cumsum(dim=0)
+                sample_indices = torch.searchsorted(cum_lengths, score_positions[:, 1], right=True)
+                gt_score = gt_score[sample_indices]
+            else:
+                gt_score = gt_score[batch_indices]
+        else:
+            gt_score = gt_score[batch_indices]
 
         score_span = self.args.roc_max_score - self.args.roc_min_score
         if score_span <= 0:

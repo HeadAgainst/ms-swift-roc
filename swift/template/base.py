@@ -575,6 +575,7 @@ class Template(ProcessorMixin):
         return batched[0] if len(batched) == 1 else batched
 
     def packing_row(self, row: List[Dict[str, Any]]) -> Dict[str, Any]:
+        from swift.dataset import RowPreprocessor
         packed = {}
         keys = set()
         length = []
@@ -593,6 +594,15 @@ class Template(ProcessorMixin):
                 packed[key] = [x.get(key) for x in row]
         if 'position_ids' not in packed:
             packed['position_ids'] = sum((list(range(x)) for x in length), start=[])
+        extra_kwargs = [x.get('_extra_kwargs') for x in row if x.get('_extra_kwargs') is not None]
+        if extra_kwargs:
+            packed_extra_kwargs = RowPreprocessor.rows_to_batched(extra_kwargs)
+            if 'lengths' in packed_extra_kwargs:
+                packed_extra_kwargs['lengths'] = [
+                    value[0] if isinstance(value, list) and len(value) == 1 else value
+                    for value in packed_extra_kwargs['lengths']
+                ]
+            packed['_extra_kwargs'] = packed_extra_kwargs
 
         packed.update(self._data_collator_mm_data(row))
         return packed
@@ -1533,7 +1543,10 @@ class Template(ProcessorMixin):
             raise ValueError(f'task_type: {self.task_type} is not supported.')
         if not self.remove_unused_columns:
             extra_kwargs = [b['_extra_kwargs'] for b in batch if b.get('_extra_kwargs') is not None]
-            extra_kwargs = RowPreprocessor.rows_to_batched(extra_kwargs)
+            if self.padding_free and len(extra_kwargs) == 1:
+                extra_kwargs = extra_kwargs[0]
+            else:
+                extra_kwargs = RowPreprocessor.rows_to_batched(extra_kwargs)
             res.update({k: v for k, v in extra_kwargs.items() if k not in res})
         if 'num_samples' in res:
             num_samples = res.pop('num_samples')

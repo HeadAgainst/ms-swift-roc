@@ -122,7 +122,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         labels = None
         compute_loss_func: Callable = inputs.pop('compute_loss_func', None)
         extra_loss_kwargs = {}
-        for key in ['gt_score', 'target']:
+        for key in ['gt_score', 'target', 'lengths']:
             if key in inputs:
                 extra_loss_kwargs[key] = inputs.pop(key)
         loss_scale = inputs.pop('loss_scale', None)
