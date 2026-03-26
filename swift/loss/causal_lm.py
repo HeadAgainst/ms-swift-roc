@@ -17,6 +17,14 @@ class CustomCrossEntropyLoss(BaseLoss):
 
 class RocScoreL1Loss(BaseLoss):
 
+    def _get_roc_attr(self, name: str):
+        if hasattr(self.args, name):
+            return getattr(self.args, name)
+        model_config = getattr(self.trainer.model, 'config', None)
+        if model_config is not None and hasattr(model_config, name):
+            return getattr(model_config, name)
+        raise AttributeError(f'ROC attribute `{name}` is not found in training args or model.config.')
+
     def __call__(self, outputs, labels, *, num_items_in_batch=None, gt_score=None, lengths=None, **kwargs):
         from swift.trainers import per_token_loss_func
 
@@ -31,10 +39,16 @@ class RocScoreL1Loss(BaseLoss):
             return lm_ce_loss
 
         tokenizer = self.trainer.template.tokenizer
-        score_token = self.args.roc_score_token
+        score_token = self._get_roc_attr('roc_score_token')
+        roc_bucket_token_template = self._get_roc_attr('roc_bucket_token_template')
+        roc_num_tokens = self._get_roc_attr('roc_num_tokens')
+        roc_min_score = self._get_roc_attr('roc_min_score')
+        roc_max_score = self._get_roc_attr('roc_max_score')
+        roc_l1_weight = self._get_roc_attr('roc_l1_weight')
+        roc_bucket_ce_weight = self._get_roc_attr('roc_bucket_ce_weight')
         score_token_id = tokenizer.convert_tokens_to_ids(score_token)
         bucket_token_ids = tokenizer.convert_tokens_to_ids(
-            [self.args.roc_bucket_token_template.format(i) for i in range(self.args.roc_num_tokens)])
+            [roc_bucket_token_template.format(i) for i in range(roc_num_tokens)])
 
         if score_token_id == tokenizer.unk_token_id and score_token != tokenizer.unk_token:
             raise ValueError(f'ROC score token `{score_token}` is not found in tokenizer.')
@@ -55,7 +69,7 @@ class RocScoreL1Loss(BaseLoss):
         score_logits = outputs.logits[batch_indices, logit_indices][:, bucket_token_ids].float()
         score_probs = torch.softmax(score_logits, dim=-1)
         score_weights = torch.linspace(
-            self.args.roc_min_score, self.args.roc_max_score, steps=self.args.roc_num_tokens, device=score_probs.device)
+            roc_min_score, roc_max_score, steps=roc_num_tokens, device=score_probs.device)
         pred_score = (score_probs * score_weights).sum(dim=-1)
 
         if not isinstance(gt_score, torch.Tensor):
@@ -80,12 +94,12 @@ class RocScoreL1Loss(BaseLoss):
         else:
             gt_score = gt_score[batch_indices]
 
-        score_span = self.args.roc_max_score - self.args.roc_min_score
+        score_span = roc_max_score - roc_min_score
         if score_span <= 0:
             raise ValueError('`roc_max_score` must be greater than `roc_min_score`.')
         target_bucket = torch.round(
-            (gt_score - self.args.roc_min_score) / score_span * (self.args.roc_num_tokens - 1)).long()
-        target_bucket = target_bucket.clamp_(0, self.args.roc_num_tokens - 1)
+            (gt_score - roc_min_score) / score_span * (roc_num_tokens - 1)).long()
+        target_bucket = target_bucket.clamp_(0, roc_num_tokens - 1)
         bucket_ce_loss = F.cross_entropy(score_logits, target_bucket)
 
         l1_loss = F.smooth_l1_loss(pred_score, gt_score)
@@ -98,4 +112,4 @@ class RocScoreL1Loss(BaseLoss):
         self.trainer.forced_log_scalars[mode]['pred_score_mean'] = float(pred_score.detach().float().mean().item())
         self.trainer.forced_log_scalars[mode]['target_bucket_mean'] = float(
             target_bucket.detach().float().mean().item())
-        return lm_ce_loss + self.args.roc_bucket_ce_weight * bucket_ce_loss + self.args.roc_l1_weight * l1_loss
+        return lm_ce_loss + roc_bucket_ce_weight * bucket_ce_loss + roc_l1_weight * l1_loss
