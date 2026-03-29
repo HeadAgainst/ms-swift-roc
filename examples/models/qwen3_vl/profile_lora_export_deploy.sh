@@ -3,11 +3,13 @@ set -euo pipefail
 
 # Export merged weights from a Qwen3-VL LoRA checkpoint, then deploy with vLLM.
 
+MODEL_DIR="${MODEL_DIR:-Qwen/Qwen3-VL-30B-A3B-Instruct}"
 ADAPTER_DIR="${ADAPTER_DIR:-output_profile_lora/checkpoint-xxx}"
 MERGED_DIR="${MERGED_DIR:-output_profile_lora/checkpoint-xxx-merged}"
 
 CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1}" \
 swift export \
+    --model "${MODEL_DIR}" \
     --adapters "${ADAPTER_DIR}" \
     --merge_lora true \
     --output_dir "${MERGED_DIR}"
