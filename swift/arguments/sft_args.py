@@ -187,7 +187,6 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
     roc_min_score: float = 1.0
     roc_max_score: float = 5.0
     roc_l1_weight: float = 1.0
-    roc_bucket_ce_weight: float = 1.0
     roc_score_token: str = '[SCORE]'
     roc_bucket_token_template: str = '[IMG{}]'
 
@@ -195,7 +194,6 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
         if not self.roc_enable:
             return
         roc_tokens = [self.roc_score_token]
-        roc_tokens += [self.roc_bucket_token_template.format(i) for i in range(self.roc_num_tokens)]
         existed = set(self.new_special_tokens)
         self.new_special_tokens += [token for token in roc_tokens if token not in existed]
         if self.loss_type is None:

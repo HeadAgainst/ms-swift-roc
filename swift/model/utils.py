@@ -87,6 +87,50 @@ def get_llm_model(model: torch.nn.Module, model_meta=None, inner_backbone=True):
     return llm_model
 
 
+def _get_unwrapped_model(model: torch.nn.Module):
+    from accelerate.utils import extract_model_from_parallel
+    from swift.tuners import SwiftModel
+
+    model = extract_model_from_parallel(model)
+    if isinstance(model, (SwiftModel, PeftModel)):
+        model = model.model
+    return model
+
+
+def ensure_roc_score_head(model: torch.nn.Module,
+                          model_meta=None,
+                          *,
+                          head_name: str = 'roc_score_head') -> nn.Module:
+    from swift.model.patcher import get_lm_head_model
+
+    model = _get_unwrapped_model(model)
+    if hasattr(model, head_name):
+        return getattr(model, head_name)
+
+    lm_heads = ['lm_head', 'output', 'embed_out', 'output_layer']
+    hidden_size = HfConfigFactory.get_config_attr(model.config, 'hidden_size')
+    initializer_range = HfConfigFactory.get_config_attr(model.config, 'initializer_range') or 0.02
+    lm_head_model = get_lm_head_model(model, model_meta=model_meta, lm_heads=lm_heads)
+    for lm_head in lm_heads:
+        if hasattr(lm_head_model, lm_head):
+            hidden_size = getattr(lm_head_model, lm_head).in_features
+            break
+
+    roc_num_tokens = int(getattr(model.config, 'roc_num_tokens', 10))
+    dtype = next(model.parameters()).dtype
+    score_head = nn.Linear(hidden_size, roc_num_tokens, bias=False, dtype=dtype)
+    if score_head.weight.device == torch.device('meta'):
+        score_head.to_empty(device='cpu')
+    score_head.weight.data.normal_(mean=0.0, std=initializer_range)
+    setattr(model, head_name, score_head)
+    return getattr(model, head_name)
+
+
+def get_roc_score_head(model: torch.nn.Module, *, head_name: str = 'roc_score_head') -> Optional[nn.Module]:
+    model = _get_unwrapped_model(model)
+    return getattr(model, head_name, None)
+
+
 def use_submodel_func(model, submodel_name: str, func_list: Optional[List[str]] = None) -> None:
     if func_list is None:
         func_list = ['generate', 'get_input_embeddings', 'gradient_checkpointing_enable', 'forward']

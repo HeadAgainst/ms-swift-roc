@@ -21,6 +21,7 @@ from swift.metrics import Metric
 from swift.model import get_model_processor
 from swift.template import Template
 from swift.tuners import Swift
+from swift.model.utils import get_roc_score_head
 from swift.utils import get_last_valid_indices, safe_snapshot_download, to_device
 from .infer_engine import InferEngine
 from .protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
@@ -396,6 +397,8 @@ class TransformersEngine(InferEngine):
         generate_kwargs = self.template.prepare_generate_kwargs(generate_kwargs, model=self.model)
         output = dict(self.template.generate(self.model, **generate_kwargs))
         output.pop('past_key_values', None)
+        roc_pred_scores = self._get_roc_pred_scores(
+            output['sequences'], num_prompt_tokens=num_prompt_tokens, adapter_names=adapter_names)
         batched_generate_ids = output['sequences']
         batched_generate_ids = self.template.get_generate_ids(batched_generate_ids, num_prompt_tokens)
         self.template.debug_logger({'generate_ids': batched_generate_ids})  # debug
@@ -427,9 +430,7 @@ class TransformersEngine(InferEngine):
                     response,
                     template_inputs[i],
                     generate_ids=generate_ids,
-                    generation_logits=output.get('logits'),
-                    generation_scores=output.get('scores'),
-                    batched_index=batched_index)
+                    roc_pred_score=None if roc_pred_scores is None else roc_pred_scores[batched_index])
                 finish_reason = self._get_finish_reason(generation_config.max_new_tokens, len(generate_ids), True)
                 toolcall = self._get_toolcall(response)
                 token_ids = generate_ids if request_config.return_details else None
@@ -458,6 +459,50 @@ class TransformersEngine(InferEngine):
                     prompt_token_ids=prompt_token_ids,
                     images_size=images_size))
         return res
+
+    def _get_roc_pred_scores(self,
+                             sequences: torch.Tensor,
+                             *,
+                             num_prompt_tokens: int,
+                             adapter_names: Optional[List[str]] = None):
+        if not getattr(self.template, 'roc_enabled', False):
+            return None
+        score_token_id = getattr(self.template, 'roc_score_token_id', None)
+        if score_token_id is None:
+            return None
+        score_head = get_roc_score_head(self.model)
+        if score_head is None:
+            return None
+
+        forward_kwargs = {
+            'input_ids': sequences,
+            'attention_mask': (sequences != self.tokenizer.pad_token_id).long(),
+            'return_dict': True,
+            'output_hidden_states': True,
+            'use_cache': False,
+        }
+        if adapter_names is not None:
+            forward_kwargs['adapter_names'] = adapter_names
+        with torch.no_grad():
+            outputs = self.model(**to_device(forward_kwargs, self.model.device))
+        hidden_states = outputs.hidden_states[-1]
+        score_positions = (sequences == score_token_id).nonzero(as_tuple=False)
+        score_map = [None] * sequences.shape[0]
+        roc_num_tokens = int(getattr(self.model.config, 'roc_num_tokens', 10))
+        roc_min_score = float(getattr(self.model.config, 'roc_min_score', 1.0))
+        roc_max_score = float(getattr(self.model.config, 'roc_max_score', 5.0))
+        score_weights = torch.linspace(
+            roc_min_score, roc_max_score, steps=roc_num_tokens, device=score_head.weight.device, dtype=torch.float32)
+        for batch_idx, token_idx in score_positions.tolist():
+            if token_idx <= 0 or batch_idx >= len(score_map) or score_map[batch_idx] is not None:
+                continue
+            score_input = hidden_states[batch_idx, token_idx - 1].to(
+                device=score_head.weight.device, dtype=score_head.weight.dtype)
+            score_logits = score_head(score_input).float()
+            score_probs = torch.softmax(score_logits, dim=-1)
+            pred = (score_probs * score_weights).sum().float()
+            score_map[batch_idx] = float(pred.item())
+        return score_map
 
     async def infer_async(
         self,

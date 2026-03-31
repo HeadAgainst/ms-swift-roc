@@ -21,7 +21,7 @@ from .model_meta import MODEL_MAPPING, BaseModelLoader, ModelInfo, ModelMeta, ge
 from .patcher import (get_lm_head_model, patch_attach_align_device_hook_on_blocks, patch_automodel,
                       patch_automodel_for_sequence_classification, patch_get_dynamic_module, patch_module_forward,
                       patch_mp_ddp, patch_tp_plan)
-from .utils import AttnImpl, InitModelStrategy, get_default_device_map
+from .utils import AttnImpl, InitModelStrategy, ensure_roc_score_head, get_default_device_map
 
 logger = get_logger()
 
@@ -343,6 +343,13 @@ class ModelLoader(BaseModelLoader):
         model.model_info = self.model_info
         model.model_meta = self.model_meta
         model.model_dir = model_dir
+        if getattr(model.config, 'roc_use_score_head', False):
+            ensure_roc_score_head(model, self.model_meta)
+            try:
+                from transformers.modeling_utils import load_sharded_checkpoint
+                load_sharded_checkpoint(model, model_dir, strict=False, prefer_safe=True)
+            except Exception:
+                pass
         self._init_generation_config(model, model_dir)
         HfConfigFactory.set_model_config_attr(model, 'pad_token_id', self.pad_token)
 

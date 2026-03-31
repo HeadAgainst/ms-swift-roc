@@ -10,6 +10,7 @@ from swift.infer_engine import prepare_generation_config
 from swift.ray import RayHelper
 from swift.sequence_parallel import sequence_parallel
 from swift.trainers import TrainerFactory
+from swift.model.utils import ensure_roc_score_head
 from swift.utils import append_to_jsonl, get_logger, get_model_parameter_info, is_master, plot_images, stat_array
 from ..base import SwiftPipeline
 from ..utils import get_cached_dataset
@@ -55,18 +56,16 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         if self.model is None:
             return
         if getattr(args, 'roc_enable', False):
-            tokenizer = self.processor.tokenizer
-            bucket_tokens = [args.roc_bucket_token_template.format(i) for i in range(args.roc_num_tokens)]
             self.model.config.roc_enabled = True
+            self.model.config.roc_use_score_head = True
             self.model.config.roc_score_token = args.roc_score_token
-            self.model.config.roc_score_token_id = tokenizer.convert_tokens_to_ids(args.roc_score_token)
+            self.model.config.roc_score_token_id = self.processor.tokenizer.convert_tokens_to_ids(args.roc_score_token)
             self.model.config.roc_num_tokens = args.roc_num_tokens
             self.model.config.roc_min_score = args.roc_min_score
             self.model.config.roc_max_score = args.roc_max_score
             self.model.config.roc_l1_weight = args.roc_l1_weight
-            self.model.config.roc_bucket_ce_weight = args.roc_bucket_ce_weight
-            self.model.config.roc_bucket_token_template = args.roc_bucket_token_template
-            self.model.config.roc_bucket_token_ids = tokenizer.convert_tokens_to_ids(bucket_tokens)
+            self.model.config.output_hidden_states = True
+            ensure_roc_score_head(self.model, self.model.model_meta)
         if hasattr(self.model, 'hf_device_map'):
             logger.info(f'model.hf_device_map: {self.model.hf_device_map}')
 
