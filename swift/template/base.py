@@ -1466,6 +1466,9 @@ class Template(ProcessorMixin):
         parameters = inspect.signature(base_model.forward).parameters
         if 'position_ids' not in parameters:
             kwargs.pop('position_ids', None)
+        if getattr(model.config, 'roc_enabled', False):
+            kwargs['output_hidden_states'] = True
+            kwargs['return_dict'] = True
         return args, kwargs
 
     @property
