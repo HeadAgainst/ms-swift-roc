@@ -67,9 +67,15 @@ class RocScoreL1Loss(BaseLoss):
         hidden_states = getattr(outputs, 'hidden_states', None)
         if hidden_states is None and isinstance(outputs, dict):
             hidden_states = outputs.get('hidden_states')
-        if hidden_states is None:
-            raise ValueError('ROC score head requires `output_hidden_states=True`, but hidden states are missing.')
-        last_hidden_state = hidden_states[-1]
+        if hidden_states is not None:
+            last_hidden_state = hidden_states[-1]
+        else:
+            last_hidden_state = getattr(outputs, 'last_hidden_state', None)
+            if last_hidden_state is None and isinstance(outputs, dict):
+                last_hidden_state = outputs.get('last_hidden_state')
+            if last_hidden_state is None:
+                raise ValueError('ROC score head requires model outputs to include either `hidden_states` '
+                                 'or `last_hidden_state`, but both are missing.')
 
         model = extract_model_from_parallel(self.trainer.model)
         if isinstance(model, PeftModel):
