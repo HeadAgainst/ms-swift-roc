@@ -115,6 +115,11 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             logger.info_once(f'router_aux_loss_coef: {args.router_aux_loss_coef}')
             if args.router_aux_loss_coef > 0:
                 inputs['output_router_logits'] = True
+        if getattr(args, 'roc_enable', False) or getattr(args, 'loss_type', None) == 'roc_score_l1':
+            # ROC loss consumes the last hidden state at the score-token position, so
+            # the trainer must always request a structured output with hidden states.
+            inputs['output_hidden_states'] = True
+            inputs['return_dict'] = True
         inputs['compute_loss_func'] = self.compute_loss_func
         return inputs
 
